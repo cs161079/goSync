@@ -5,11 +5,11 @@ import "fmt"
 type OasaError struct {
 	Error_Code  int32
 	Error_Descr string
-	Retry       bool
+	//Retry       bool
 }
 
 type OasaResponse struct {
-	Error *OasaError
+	Error error
 	Data  interface{}
 }
 

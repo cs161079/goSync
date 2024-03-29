@@ -184,7 +184,7 @@ func (t testType) Http_Error() {
 // }
 
 // This function call OASA Server to get all information about Bus Lines and store in general Interface{}
-func GetBusLinesTest() ([]models.Busline, *oasaSyncWeb.OasaError) {
+func GetBusLinesTest() ([]models.Busline, error) {
 	var result []models.Busline
 	response := oasaSyncWeb.OasaRequestApi("webGetLinesWithMLInfo", nil)
 	if response.Error != nil {
@@ -198,7 +198,7 @@ func GetBusLinesTest() ([]models.Busline, *oasaSyncWeb.OasaError) {
 	return result, nil
 }
 
-func GetBusRoutes(lined_id int32) ([]models.BusRoute, *oasaSyncWeb.OasaError) {
+func GetBusRoutes(lined_id int32) ([]models.BusRoute, error) {
 	var result []models.BusRoute
 	response := oasaSyncWeb.OasaRequestApi("webGetRoutes", map[string]interface{}{"p1": lined_id})
 	if response.Error != nil {
@@ -214,7 +214,7 @@ func GetBusRoutes(lined_id int32) ([]models.BusRoute, *oasaSyncWeb.OasaError) {
 	return result, nil
 }
 
-func GetBusStops(route_code int32) ([]models.BusStopDto, *oasaSyncWeb.OasaError) {
+func GetBusStops(route_code int32) ([]models.BusStopDto, error) {
 	var result []models.BusStopDto
 	response := oasaSyncWeb.OasaRequestApi("webGetStops", map[string]interface{}{"p1": route_code})
 	if response.Error != nil {
@@ -230,7 +230,7 @@ func GetBusStops(route_code int32) ([]models.BusStopDto, *oasaSyncWeb.OasaError)
 	return result, nil
 }
 
-func GetBusScheduleMaster(line_code int32) ([]models.BusScheduleMasterLineDto, *oasaSyncWeb.OasaError) {
+func GetBusScheduleMaster(line_code int32) ([]models.BusScheduleMasterLineDto, error) {
 	var result []models.BusScheduleMasterLineDto
 	response := oasaSyncWeb.OasaRequestApi("getScheduleDaysMasterline", map[string]interface{}{"p1": line_code})
 
