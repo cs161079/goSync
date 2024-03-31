@@ -5,6 +5,7 @@ go 1.20
 require (
 	github.com/cs161079/godbLib v0.0.4
 	github.com/fatih/structs v1.1.0
+	github.com/joho/godotenv v1.5.1
 )
 
 require (

@@ -186,7 +186,7 @@ func (t testType) Http_Error() {
 // This function call OASA Server to get all information about Bus Lines and store in general Interface{}
 func GetBusLinesTest() ([]models.Busline, error) {
 	var result []models.Busline
-	response := oasaSyncWeb.OasaRequestApi("webGetLinesWithMLInfo", nil)
+	response := oasaSyncWeb.OasaRequestApi("webGetLinesWithMLInfoo", nil)
 	if response.Error != nil {
 		return nil, response.Error
 	}

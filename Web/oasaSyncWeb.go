@@ -1,7 +1,10 @@
 package oasaSyncWeb
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -75,34 +78,71 @@ func httpRequest(request *OpswHttpRequest) (*http.Response, error) {
 	return response, nil
 }
 
-// func MakeRequest(action string) (string, error) {
-// 	var req OpswHttpRequest = OpswHttpRequest{
-// 		Method: http.MethodGet,
-// 	}
-// 	response, err := httpRequest(oasaApplication+"/api/?act="+action,
-// 		map[string]string{
-// 			"Accept-Encoding": "gzip, deflate"})
-// 	if err != nil {
-// 		return "", err
-// 	}
+func getRequest(url string, headers map[string]string) (*http.Response, error) {
+	client := &http.Client{
+		Timeout: time.Second * 10,
+	}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		fmt.Errorf("got error %s", err.Error())
+		return nil, err
+	}
 
-// 	reader, err := gzip.NewReader(response.Body)
+	if headers != nil && len(headers) > 0 {
+		for key, value := range headers {
+			req.Header.Set(key, value)
+		}
+	}
 
-// 	if err != nil {
-// 		fmt.Printf(err.Error())
-// 		return "", err
-// 	} else {
-// 		defer reader.Close()
+	response, err := client.Do(req)
+	if response.StatusCode != 200 {
+		return nil, errors.New(response.Status)
+	}
+	if err != nil {
+		fmt.Printf("error making http request: %s\n", err.Error())
+		return nil, err
+	}
+	//fmt.Printf("%s %d %s %s %s \n", time.Now().Format("2006-01-02 15:04:05"), response.StatusCode, strings.Split(url, "?")[1], req.Method, req.Host)
+	logger.INFO(response.Status + " " + url)
+	// fmt.Printf("client: got response!\n")
+	// fmt.Printf("client: status code: %d\n", response.StatusCode)
+	return response, nil
+}
 
-// 		buf := new(bytes.Buffer)
-// 		buf.ReadFrom(reader)
-// 		responseStr := buf.String()
-// 		if response.StatusCode == http.StatusInternalServerError {
-// 			fmt.Println("Response Body ", responseStr)
-// 		}
-// 		return responseStr, nil
-// 	}
-// }
+func MakeRequest(action string) (string, error) {
+	var extraparamUrl string = ""
+	// keys := make([]int, len(extraParams))
+
+	var req OpswHttpRequest = OpswHttpRequest{
+		Method:   http.MethodGet,
+		Endpoint: fmt.Sprintf("%s/api/?act=%s%s", oasaApplication, action, extraparamUrl),
+	}
+	req.Headers = map[string]string{
+		"Accept-Encoding": "gzip, deflate"}
+	//Error Code for error occured in Request Creation
+	response, err := httpRequest(&req)
+
+	if err != nil {
+		return "", err
+	}
+
+	reader, err := gzip.NewReader(response.Body)
+
+	if err != nil {
+		fmt.Printf(err.Error())
+		return "", err
+	} else {
+		defer reader.Close()
+
+		buf := new(bytes.Buffer)
+		buf.ReadFrom(reader)
+		responseStr := buf.String()
+		if response.StatusCode == http.StatusInternalServerError {
+			fmt.Println("Response Body ", responseStr)
+		}
+		return responseStr, nil
+	}
+}
 
 func OasaRequestApi(action string, extraParams map[string]interface{}) *OasaResponse {
 	var oasaResult OasaResponse = OasaResponse{}
