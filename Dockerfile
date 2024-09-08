@@ -6,7 +6,7 @@ FROM golang:1.20
 WORKDIR /goSync
 
 # Enviroment Application Properties
-COPY enviroment.env ./
+COPY .env ./
 # Download Go modules
 COPY go.mod go.sum ./
 RUN go mod download

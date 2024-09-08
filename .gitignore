@@ -1,1 +1,4 @@
 *.exe
+.idea/vcs.xml
+.idea/modules.xml
+.idea/goSync.iml
