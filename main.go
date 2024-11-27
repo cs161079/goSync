@@ -58,34 +58,34 @@ func worker(id int, connection *gorm.DB, wg *sync.WaitGroup) {
 	time.Sleep(10 * time.Second)
 }
 
-func _main() {
-	var wg sync.WaitGroup // Create a WaitGroup
+// func _main() {
+// 	var wg sync.WaitGroup // Create a WaitGroup
 
-	emf, err := db.CreateConnection()
-	if err != nil {
-		logger.ERROR(err.Error())
-		return
-	} // Increment the WaitGroup counter
-	logger.InitLogger("goSyncApplication")
+// 	emf, err := db.CreateConnection()
+// 	if err != nil {
+// 		logger.ERROR(err.Error())
+// 		return
+// 	} // Increment the WaitGroup counter
+// 	logger.InitLogger("goSyncApplication")
 
-	// Launch several goroutines
-	for i := 1; i <= 7; i++ {
-		wg.Add(1)
+// 	// Launch several goroutines
+// 	for i := 1; i <= 7; i++ {
+// 		wg.Add(1)
 
-		// em, err := emf.DB()
-		if err != nil {
-			logger.ERROR(err.Error())
-			// return
-		} else {
-			go worker(i, emf, &wg) // Start a goroutine
-		}
+// 		// em, err := emf.DB()
+// 		if err != nil {
+// 			logger.ERROR(err.Error())
+// 			// return
+// 		} else {
+// 			go worker(i, emf, &wg) // Start a goroutine
+// 		}
 
-	}
+// 	}
 
-	// Wait for all goroutines to finish
-	wg.Wait()
-	fmt.Println("All workers done")
-}
+// 	// Wait for all goroutines to finish
+// 	wg.Wait()
+// 	fmt.Println("All workers done")
+// }
 
 func main() {
 	logger.InitLogger("goSyncApplication")
@@ -106,37 +106,9 @@ func main() {
 	// ******** Δημιουργία Service for Sychronization *************
 	syncSrv := service.NewSyncService()
 
-	// err = syncSrv.SyncLines(applicationContext)
-	// if err != nil {
-	// 	logger.ERROR(fmt.Sprintf("Error occured on line Sychronization. [%s]", err.Error()))
-	// }
-	// err = syncSrv.SyncRoutes(applicationContext)
-	// if err != nil {
-	// 	logger.ERROR(fmt.Sprintf("Error occured on Route Sychronization. [%s]", err.Error()))
-	// }
-	// err = syncSrv.SyncStops(applicationContext)
-	// if err != nil {
-	// 	logger.ERROR(fmt.Sprintf("Error occured on Stop Sychronization. [%s]", err.Error()))
-	// }
-
-	// err = syncSrv.SyncLines(applicationContext)
-	// if err != nil {
-	// 	logger.ERROR(fmt.Sprintf("Error Occured on ROute stop Sychronization. [%s]", err.Error()))
-	// }
-
-	// err = syncSrv.SyncRoutes(applicationContext)
-	// if err != nil {
-	// 	logger.ERROR(fmt.Sprintf("Error Occured on ROute stop Sychronization. [%s]", err.Error()))
-	// }
-
-	// err = syncSrv.SyncStops(applicationContext)
-	// if err != nil {
-	// 	logger.ERROR(fmt.Sprintf("Error Occured on ROute stop Sychronization. [%s]", err.Error()))
-	// }
-
-	err = syncSrv.SyncRouteStops(applicationContext)
+	err = syncSrv.SyncData(applicationContext)
 	if err != nil {
-		logger.ERROR(fmt.Sprintf("Error Occured on ROute stop Sychronization. [%s]", err.Error()))
+		logger.ERROR(fmt.Sprintf("An error occurred on data sychronization from Server \n[%s]", err.Error()))
 	}
 
 }

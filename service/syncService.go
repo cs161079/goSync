@@ -9,6 +9,7 @@ import (
 	utils "github.com/cs161079/godbLib/Utils"
 	logger "github.com/cs161079/godbLib/Utils/goLogger"
 	"github.com/cs161079/godbLib/db"
+	"github.com/cs161079/godbLib/mapper"
 	"github.com/cs161079/godbLib/repository"
 	"github.com/cs161079/godbLib/service"
 	"gorm.io/gorm"
@@ -29,7 +30,7 @@ type SyncService interface {
 	//	    "mld_master": "1"
 	//	}
 	// =================================================================================================================
-	SyncLines(context.Context) error
+	syncLines(context.Context) error
 	// =================================================================================================================
 	// Με αυτή τη διαδικασία συγχρονίζουμε τα δεδομένα των διαδρομών από τον Server του OASA στην δική μας βάση δεδομένων.
 	// Καλούμε το API /getRoutes το οποίο μας επιστρέφει όλες τις διαδρομές σε txt μορφή, τα δεδομένα των διαδρομών
@@ -37,7 +38,7 @@ type SyncService interface {
 	//
 	// (1754,799, "ΕΛ.ΒΕΝΙΖΕΛΟΥ - ΚΑΙΣΑΡΙΑΝΗ", "EL. VENIZELOU - KAISARIANI",2,9889.61)
 	// =================================================================================================================
-	SyncRoutes(context.Context) error
+	syncRoutes(context.Context) error
 	// =================================================================================================================
 	// Με αυτή τη διαδικασία συγχρονίζουμε τα δεδομένα των στάσεων από τον Server του OASA στην δική μας βάση δεδομένων.
 	// Καλούμε το API /getStops το οποίο μας επιστρέφει όλες τις στάσεις σε txt μορφή, τα δεδομένα των στάσεων
@@ -46,7 +47,7 @@ type SyncService interface {
 	// (10001, "010001", "ΣΤΡΟΦΗ", "STROFH", "ΕΛ.ΒΕΝΙΖΕΛΟΥ", "ΕΛ.ΒΕΝΙΖΕΛΟΥ", -1,23.665,37.9986,0,0,
 	//                       "| ΑΝΩ ΑΓ. ΒΑΡΒΑΡΑ| ΠΕΙΡΑΙΑΣ ΠΛ. ΚΑΡΑΪΣΚΑΚΗ", "| ANO AG. BARBARA| PEIRAIAS PL. KARAISKAKΗ")
 	// =================================================================================================================
-	SyncStops(context.Context) error
+	syncStops(context.Context) error
 	// =================================================================================================================
 	// Με αυτή τη διαδικασία συγχρονίζουμε τα δεδομένα των στάσεων ανά διαδρομή από τον Server του OASA στην δική μας
 	// βάση δεδομένων. Καλούμε το API /getRouteStops το οποίο μας επιστρέφει όλες τις στάσεις σε txt μορφή, τα δεδομένα
@@ -55,15 +56,21 @@ type SyncService interface {
 	//
 	//	(103406,2081,10373,1)
 	// =================================================================================================================
-	SyncRouteStops(context.Context) error
+	syncRouteStops(context.Context) error
+
+	syncRouteDetails(context.Context) error
+	uVersionFromOasa() ([]models.UVersions, error)
+	SyncData(context.Context) error
 }
 
 type syncService struct {
-	LineSrv service.LineService
+	rest service.RestService
 }
 
 func NewSyncService() SyncService {
-	return syncService{}
+	return syncService{
+		rest: service.NewRestService(),
+	}
 }
 
 func recPreparation(recStr string) string {
@@ -71,12 +78,86 @@ func recPreparation(recStr string) string {
 	return strings.ReplaceAll(trimmedSpace, "\"", "")
 }
 
-func (s syncService) SyncLines(ctx context.Context) error {
-	// *********** Κάνου get το connection της  βάσης από το Context ************
+func (s syncService) uVersionFromOasa() ([]models.UVersions, error) {
+	response := s.rest.OasaRequestApi00("getUVersions", nil)
+	if response.Error != nil {
+		return nil, response.Error
+	}
+	var mapper = mapper.NewUVersionMapper()
+	var result []models.UVersions = make([]models.UVersions, 0)
+	for _, rec := range response.Data.([]interface{}) {
+		result = append(result, mapper.OasaToUVersions(mapper.GeneralUVersions(rec)))
+	}
+	return result, nil
+}
+
+func (s syncService) SyncData(ctx context.Context) error {
+	// *********** Κάνουμε get το connection της  βάσης από το Context ************
+	var dbConnection *gorm.DB = ctx.Value(db.CONNECTIONVAR).(*gorm.DB)
+	// **************************************************************************
+	versionsArr, err := s.uVersionFromOasa()
+	if err != nil {
+		return err
+	}
+	uvServ := service.NewuVersionService(dbConnection)
+	routeDetailMustUpdate := false
+	for _, rec := range versionsArr {
+		dbRec, err := uvServ.Select(rec.Uv_descr)
+		if err != nil {
+			return nil
+		}
+
+		if rec.Uv_lastupdatelong > dbRec.Uv_lastupdatelong {
+			switch rec.Uv_descr {
+			case "LINES":
+				logger.INFO("########### Lines will be updated...")
+				if err := s.syncLines(ctx); err != nil {
+					return err
+				}
+				// Εδώ θα πρέπει να κάνουμε Update την εγγραφή στον πίνακα με το νέο Version.
+				uvServ.Post(&rec)
+			case "ROUTE STOPS":
+				routeDetailMustUpdate = true
+				logger.INFO("########### Route Stops will be updated...")
+				if err := s.syncRouteStops(ctx); err != nil {
+					return err
+				}
+				// Εδώ θα πρέπει να κάνουμε Update την εγγραφή στον πίνακα με το νέο Version.
+				uvServ.Post(&rec)
+			case "ROUTES":
+				routeDetailMustUpdate = true
+				logger.INFO("########### Routes will be updated...")
+				if err := s.syncRoutes(ctx); err != nil {
+					return err
+				}
+				// Εδώ θα πρέπει να κάνουμε Update την εγγραφή στον πίνακα με το νέο Version.
+				uvServ.Post(&rec)
+			case "STOPS":
+				logger.INFO("########### Stops will be updated...")
+				if err := s.syncStops(ctx); err != nil {
+					return err
+				}
+				// Εδώ θα πρέπει να κάνουμε Update την εγγραφή στον πίνακα με το νέο Version.
+				uvServ.Post(&rec)
+			}
+		}
+	}
+	if routeDetailMustUpdate {
+		logger.INFO("########### Route Details will be updated...")
+		if err := s.syncRouteDetails(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+
+}
+
+func (s syncService) syncLines(ctx context.Context) error {
+	// *********** Κάνουμε get το connection της  βάσης από το Context ************
 	var dbConnection *gorm.DB = ctx.Value(db.CONNECTIONVAR).(*gorm.DB)
 	// **************************************************************************
 
-	s.LineSrv = service.NewLineService(repository.NewLineRepository(dbConnection))
+	lineSrv := service.NewLineService(repository.NewLineRepository(dbConnection))
 	var restSrv = service.NewRestService()
 
 	response := restSrv.OasaRequestApi00("webGetLinesWithMLInfo", nil)
@@ -84,19 +165,19 @@ func (s syncService) SyncLines(ctx context.Context) error {
 		return response.Error
 	}
 	txt := dbConnection.Begin()
-	if err := s.LineSrv.WithTrx(txt).DeleteAll(); err != nil {
+	if err := lineSrv.WithTrx(txt).DeleteAll(); err != nil {
 		txt.Rollback()
 	}
 	logger.INFO("Delete all data from Line table in database succesfully.")
 	var lineArray []models.Line = make([]models.Line, 0)
 	logger.INFO("Start sychronize data from OASA Server...")
 	for _, ln := range response.Data.([]any) {
-		lineOasa := s.LineSrv.GetMapper().GeneralLine(ln.(map[string]interface{}))
-		line := s.LineSrv.GetMapper().OasaToLine(lineOasa)
+		lineOasa := lineSrv.GetMapper().GeneralLine(ln.(map[string]interface{}))
+		line := lineSrv.GetMapper().OasaToLine(lineOasa)
 
 		lineArray = append(lineArray, line)
 		if len(lineArray) == 1000 {
-			_, err := s.LineSrv.WithTrx(txt).InsertArray(lineArray)
+			_, err := lineSrv.WithTrx(txt).InsertArray(lineArray)
 			if err != nil {
 				txt.Rollback()
 				return err
@@ -108,7 +189,7 @@ func (s syncService) SyncLines(ctx context.Context) error {
 	}
 
 	if len(lineArray) > 0 {
-		_, err := s.LineSrv.WithTrx(txt).InsertArray(lineArray)
+		_, err := lineSrv.WithTrx(txt).InsertArray(lineArray)
 		if err != nil {
 			txt.Rollback()
 			return err
@@ -121,7 +202,7 @@ func (s syncService) SyncLines(ctx context.Context) error {
 	return nil
 }
 
-func (s syncService) SyncRoutes(ctx context.Context) error {
+func (s syncService) syncRoutes(ctx context.Context) error {
 	// *********** Κάνου get το connection της  βάσης από το Context ************
 	var dbConnection *gorm.DB = ctx.Value(db.CONNECTIONVAR).(*gorm.DB)
 	// **************************************************************************
@@ -198,7 +279,7 @@ func (s syncService) SyncRoutes(ctx context.Context) error {
 	return nil
 }
 
-func (s syncService) SyncStops(ctx context.Context) error {
+func (s syncService) syncStops(ctx context.Context) error {
 	// *********** Κάνου get το connection της  βάσης από το Context ************
 	var dbConnection *gorm.DB = ctx.Value(db.CONNECTIONVAR).(*gorm.DB)
 	// **************************************************************************
@@ -290,7 +371,7 @@ func (s syncService) SyncStops(ctx context.Context) error {
 	return nil
 }
 
-func (s syncService) SyncRouteStops(ctx context.Context) error {
+func (s syncService) syncRouteStops(ctx context.Context) error {
 	// *********** Παίρνουμε το connection από το Context της εφαρμογής ************
 	var dbConnection *gorm.DB = ctx.Value(db.CONNECTIONVAR).(*gorm.DB)
 	// *****************************************************************************
@@ -352,5 +433,66 @@ func (s syncService) SyncRouteStops(ctx context.Context) error {
 	}
 	tx.Commit()
 	logger.INFO("Finished sychronization Route02 data from OASA Server.")
+	return nil
+}
+
+func (s syncService) syncRouteDetails(ctx context.Context) error {
+	// *********** Παίρνουμε το connection από το Context της εφαρμογής ************
+	var dbConnection *gorm.DB = ctx.Value(db.CONNECTIONVAR).(*gorm.DB)
+	// *****************************************************************************
+
+	// Δημιουργία ενός Rest Service για να κάνω την κλήση στον Server
+	var restSrv = service.NewRestService()
+
+	var routeSrv = service.NewRouteService(dbConnection)
+	var allRoutes, err = routeSrv.List01()
+	if err != nil {
+		return err
+	}
+
+	var allRouteDetails []models.Route01 = make([]models.Route01, 0)
+
+	var tx = dbConnection.Begin()
+
+	if err := routeSrv.WithTrx(tx).DeleteRoute01(); err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	for _, rec := range allRoutes {
+		response := restSrv.OasaRequestApi00("webRouteDetails",
+			map[string]interface{}{
+				"p1": int64(rec.Route_Code),
+			},
+		)
+		if response.Error != nil {
+			return response.Error
+		}
+
+		// Είναι Array από interfaced{} τα οποία είναι map[stirng]interface{}
+		for _, j := range response.Data.([]interface{}) {
+			var route01Oasa = routeSrv.GetMapper01().GeneralRoute01(j.(map[string]interface{}))
+			var route01 = routeSrv.GetMapper01().OasaToRoute01Dto(route01Oasa)
+			route01.Route_code = rec.Route_Code
+			allRouteDetails = append(allRouteDetails, route01)
+			if len(allRouteDetails) == 10000 {
+				if _, err := routeSrv.WithTrx(tx).Route01InsertArr(allRouteDetails); err != nil {
+					tx.Rollback()
+					return err
+				}
+				logger.INFO(fmt.Sprintf("Batch of data size %d saved succesfully.", len(allRouteDetails)))
+				allRouteDetails = make([]models.Route01, 0)
+			}
+		}
+	}
+	if len(allRouteDetails) > 0 {
+		if _, err := routeSrv.Route01InsertArr(allRouteDetails); err != nil {
+			tx.Rollback()
+			return err
+		}
+		logger.INFO(fmt.Sprintf("Batch of data size %d saved succesfully.", len(allRouteDetails)))
+	}
+
+	tx.Commit()
 	return nil
 }

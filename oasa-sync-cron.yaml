@@ -1,0 +1,14 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: oasaSync-cronjob
+spec:
+  schedule: "*/1 * * * *"  # Run every 1 minutes
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: oasaSync-container
+            image: oulisnikos/oasa-go-sync
+          restartPolicy: Never
